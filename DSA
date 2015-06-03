@@ -14,7 +14,7 @@ setmetatable(FAILURE, {__tostring = function() return "FAILURE" end, __metatable
 
 function getfirstseed( N, seedlen )
 	local firstseed = 0
-	if (N ~= 160 and n ~= 224 and n ~= 256) or seedlen < N then
+	if (N ~= 160 and N ~= 224 and N ~= 256) or seedlen < N then
 		return FAILURE
 	end
 	local limit = 2 ^ (N - 1)
