@@ -24,10 +24,10 @@
 -- modification, are permitted provided that the following conditions
 -- are met:
 -- 1. Redistributions of source code must retain the above copyright
---    notice, this list of conditions and the following disclaimer.
+--	notice, this list of conditions and the following disclaimer.
 -- 2. Redistributions in binary form must reproduce the above copyright
---    notice, this list of conditions and the following disclaimer in the
---    documentation and/or other materials provided with the distribution.
+--	notice, this list of conditions and the following disclaimer in the
+--	documentation and/or other materials provided with the distribution.
 --
 -- THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
 -- ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -77,9 +77,20 @@ local function cmod(a, b)
 	return x
 end
 
+-- Figure out how many bits are in a number.
+local function cbits(c)
+	return fl(math.log(c, 2)) + 1
+end
 
-local radix = 2^24 -- maybe up to 2^26 is safe?
+-- Return the nth bit in a number.
+local function cbit(c, bitnum)
+	return fl((c / 2^(bitnum-1)) % 2)
+end
+
+
+local radix = 2^31 -- maybe up to 2^26 is safe?
 local radix_sqrt = fl(math.sqrt(radix))
+local comp_bits = cbits(radix - 1)
 
 local bigintmt -- forward decl
 
@@ -161,6 +172,7 @@ local function negate(a)
 end
 
 local function compare(a, b)
+	a, b = type(a) == "number" and bigint(a) or a, type(b) == "number" and bigint(b) or b
 	local ac, bc = a.comps, b.comps
 	local as, bs = a.sign, b.sign
 	if ac == bc then
@@ -310,7 +322,7 @@ local function kmul(a, b)
 	return jl
 end
 
-local kthresh = 12
+local kthresh = 16
 
 local function mul(a, b)
 	if type(a) == "number" then
@@ -526,4 +538,118 @@ function bigint(n)
 	cache[n] = bi
 	ncache = ncache + 1
 	return bi
+end
+
+function random(n)
+	local bi = alloc()
+	bi.comps[1] = math.random(0, radix)
+	if type(n) == "table" then
+		for i = 2, #n.comps do
+			bi.comps[i] = math.random(0, radix)
+		end
+	end
+	normalize(bi)
+	bi = mod(bi, n)
+	return bi
+end
+
+function bit( bi, bitnum )
+	local ci, bit
+
+	ci = fl(bitnum / comp_bits)
+	if ci >= #bi.comps then
+		bit = 0
+	else
+		bit = cbit( bi.comps[ci+1], bitnum - ci * comp_bits );
+	end
+	return bit
+ end
+
+function bits( bi )
+	local bits
+
+	bits = comp_bits * ( #bi.comps - 1 ) + cbits( bi.comps[#bi.comps] )
+	return bits
+end
+
+-- Regular O(n^2) squaring; about twice as fast as regular multiplication.
+--[=[function rsquare(bi)
+	local biR, c1, c2
+
+	biR = clone(bigint(0))
+	for c1 = 1,#bi.comps do
+		print("bigloop",biR)
+		for c2 = 1,c1 do
+			print("smallloop", biR)
+			biR.comps[c1 + c2] = (biR.comps[c1 + c2] or 0) + 2 * (bi.comps[c1] or 0) * (bi.comps[c2] or 0)
+			print("smallend", biR)
+		end
+		biR.comps[c1*2] = (biR.comps[c1*2] or 0) + (bi.comps[c1] or 0) * (bi.comps[c1] or 0)
+		--[[ Normalize after each inner loop to avoid overflowing any
+		-- components.  But be sure to reset biR's components count,
+		-- in case a previous normalization lowered it.
+		]]
+		normalize(biR)
+		print("bigend",biR)
+	end
+	return biR
+end]=]
+
+local function rsquare(n)
+	local bi = alloc()
+	local c = bi.comps
+	local nc = n.comps
+	for i = 1, #nc * 2 do
+		c[i] = 0
+	end
+	for i = 1, #nc do
+		for j = 1, #nc do
+			c[i+j-1] = c[i+j-1] + nc[i] * nc[j]
+		end
+		-- keep the zeroes
+		normalize(bi, true)
+	end
+	normalize(bi)
+	if bi ~= bigint(0) then
+		bi.sign = n.sign * n.sign
+	end
+	return bi
+end
+
+
+local ksquarethresh = 20
+
+function square(bi)
+	if #bi.comps < ksquarethresh then
+		return rsquare(bi)
+	else
+		return ksquare(bi)
+	end
+end
+
+function power(bi, biexp)
+	local biR, bts, bitnum
+
+	local bit, bits = bit, bits
+	if type(biexp) == "number" then
+		bit, bits = cbit, cbits
+	end
+
+	if biexp < 0 then
+		error("bi_power: negative exponent\n")
+	end
+	bts = bits(biexp)
+	if bit(biexp, 1) == 1 then
+		biR = clone(bi)
+	else
+		biR = clone(bigint(1))
+	end
+	bitnum = 0
+	for bitnum = 2,bts do
+		bi = square(bi)
+		if bit(biexp, bitnum) == 1 then
+			biR = multiply(biR, bi)
+		end
+	end
+	return biR
 end

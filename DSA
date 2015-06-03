@@ -1,0 +1,30 @@
+dofile "bigint.lua"
+
+function randomBits( nbits )
+	local result = random(power(bigint(2), nbits))
+	if bits(result) < nbits then
+		result = result + power(bigint(2), nbits-1)
+	end
+	return result
+end
+
+local SUCCESS, FAILURE = {}, {}
+setmetatable(SUCCESS, {__tostring = function() return "SUCCESS" end, __metatable = SUCCESS})
+setmetatable(FAILURE, {__tostring = function() return "FAILURE" end, __metatable = FAILURE})
+
+function getfirstseed( N, seedlen )
+	local firstseed = 0
+	if (N ~= 160 and n ~= 224 and n ~= 256) or seedlen < N then
+		return FAILURE
+	end
+	local limit = 2 ^ (N - 1)
+	while firstseed < limit do
+		firstseed = randomBits(seedlen)
+	end
+	return SUCCESS, firstseed
+end
+
+function generateprimes( L, N, firstseed )
+	return status, p, q, pseed, qseed, pgen_counter, qgen_counter
+end
+
