@@ -1,4 +1,5 @@
 dofile "bigint.lua"
+dofile "sha256"
 
 function randomBits( nbits )
 	local result = random(power(bigint(2), nbits))
@@ -24,7 +25,57 @@ function getfirstseed( N, seedlen )
 	return SUCCESS, firstseed
 end
 
+function ShaweTaylor( length, input_seed )
+	if length < 2 then
+		return FAILURE, 0, 0, 0
+	elseif length >= 33 then
+		-- TODO: Implement step 2 (jump to step 14)!!!
+	else
+		prime_seed = input_seed
+		prime_gen_counter = 0
+		-- Generate a pseudorandom integer c of length bits.
+		while true do
+			local c = bxor(sha256(prime_seed), sha256(prime_seed + 1))
+			c = power(bigint(2),length - 1) + (c % power(bigint(2), length - 1))
+			c = 2 * (c / 2) + 1
+			-- Set prime to the least odd integer greater than or equal to c.
+			prime_gen_counter = prime_gen_counter + 1
+			prime_seed = prime_seed + 2
+			--[[10. Perform a deterministic primality test on c. For example, since c is small, its primality can be tested by trial division. See Appendix C.7.]]
+			--[[1. Prepare a table of primes less than c . This can be done by applying the sieve procedure in Appendix C.8.]]
+			local root_c = sqrt(c)
+			local primes = {}
+			-- TODO: Insert sieve from C.8!!!
+			local is_prime
+			for i=1,#primes do
+				if c % primes[i] == 0 then
+					is_prime = false
+					break
+				end
+			end
+			if not is_prime then
+				is_prime = true
+			end
+			if is_prime then
+				prime = c
+				return SUCCESS, prime, prime_seed, prime_gen_counter
+			elseif (prime_gen_counter > (4 * length)) then
+				return FAILURE, 0, 0, 0
+			end
+		end
+	end
+	return status, prime, prime_seed, prime_gen_counter
+end
+
 function generateprimes( L, N, firstseed )
+	if (N ~= 160 and N ~= 224 and N ~= 256) or (L ~= 1024 and L ~= 2048 and L ~= 3072) then
+		return FAILURE
+	end
+	-- Comment: Use the Shawe-Taylor random prime routine in Appendix C.6 to generate random primes.
+	local status, q, qseed, qgen_counter = ShaweTaylor(N, firstseed)
+	if status == FAILURE then
+		return FAILURE
+	end
 	return status, p, q, pseed, qseed, pgen_counter, qgen_counter
 end
 
