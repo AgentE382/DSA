@@ -89,6 +89,7 @@ end
 
 
 local radix = 2^31 -- maybe up to 2^26 is safe?
+local bi_radix_o2 = radix / 2
 local radix_sqrt = fl(math.sqrt(radix))
 local comp_bits = cbits(radix - 1)
 
@@ -172,7 +173,6 @@ local function negate(a)
 end
 
 local function compare(a, b)
-	a, b = type(a) == "number" and bigint(a) or a, type(b) == "number" and bigint(b) or b
 	local ac, bc = a.comps, b.comps
 	local as, bs = a.sign, b.sign
 	if ac == bc then
@@ -253,6 +253,8 @@ local function sub(a, b)
 	return add(a, negate(b))
 end
 
+local subtract = sub
+
 local function mulint(a, b)
 	local bi = clone(a)
 	if b < 0 then
@@ -266,6 +268,9 @@ local function mulint(a, b)
 	normalize(bi)
 	return bi
 end
+
+local int_multiply = mulint
+local bi_0, bi_1, bi_m1
 
 local function multiply(a, b)
 	local bi = alloc()
@@ -282,7 +287,7 @@ local function multiply(a, b)
 		normalize(bi, true)
 	end
 	normalize(bi)
-	if bi ~= bigint(0) then
+	if bi ~= bi_0 then
 		bi.sign = a.sign * b.sign
 	end
 	return bi
@@ -392,23 +397,23 @@ local function div(numer, denom)
 	end
 	-- check signs and trivial cases
 	local sign = 1
-	local cmp = compare(denom, bigint(0))
+	local cmp = compare(denom, bi_0)
 	if cmp == 0 then
 		error("divide by 0", 2)
 	elseif cmp == -1 then
 		sign = -sign
 		denom = negate(denom)
 	end
-	cmp = compare(numer, bigint(0))
+	cmp = compare(numer, bi_0)
 	if cmp == 0 then
-		return bigint(0)
+		return bi_0
 	elseif cmp == -1 then
 		sign = -sign
 		numer = negate(numer)
 	end
 	cmp = compare(numer, denom)
 	if cmp == -1 then
-		return bigint(0)
+		return bi_0
 	elseif cmp == 0 then
 		return bigint(sign)
 	end
@@ -424,6 +429,8 @@ local function div(numer, denom)
 	end
 	return bi
 end
+
+local divide = div
 
 local function intrem(bi, m)
 	if m < 0 then
@@ -479,7 +486,7 @@ end
 
 local function biginttostring(bi)
 	local s = {}
-	if bi < bigint(0) then
+	if bi < bi_0 then
 		bi = negate(bi)
 		table.insert(s, "-")
 	end
@@ -521,7 +528,7 @@ function bigint(n)
 			sign = -1
 			start = 2
 		end
-		bi = bigint(0)
+		bi = bi_0
 		for i = start, #digits do
 			bi = addint(mulint(bi, 10), tonumber(digits[i]))
 		end
@@ -539,6 +546,8 @@ function bigint(n)
 	ncache = ncache + 1
 	return bi
 end
+
+bi_0, bi_1, bi_m1 = bigint(0), bigint(1), bigint(-1)
 
 function random(n)
 	local bi = alloc()
@@ -576,7 +585,7 @@ end
 --[=[function rsquare(bi)
 	local biR, c1, c2
 
-	biR = clone(bigint(0))
+	biR = clone(bi_0)
 	for c1 = 1,#bi.comps do
 		print("bigloop",biR)
 		for c2 = 1,c1 do
@@ -610,7 +619,7 @@ local function rsquare(n)
 		normalize(bi, true)
 	end
 	normalize(bi)
-	if bi ~= bigint(0) then
+	if bi ~= bi_0 then
 		bi.sign = n.sign * n.sign
 	end
 	return bi
@@ -627,6 +636,10 @@ function square(bi)
 	end
 end
 
+function is_negative(bi)
+    return ( bi.sign == -1 )
+end
+
 function power(bi, biexp)
 	local biR, bts, bitnum
 
@@ -635,14 +648,14 @@ function power(bi, biexp)
 		bit, bits = cbit, cbits
 	end
 
-	if biexp < 0 then
+	if is_negative(biexp) then
 		error("bi_power: negative exponent\n")
 	end
 	bts = bits(biexp)
 	if bit(biexp, 1) == 1 then
 		biR = clone(bi)
 	else
-		biR = clone(bigint(1))
+		biR = clone(bi_1)
 	end
 	bitnum = 0
 	for bitnum = 2,bts do
@@ -652,4 +665,69 @@ function power(bi, biexp)
 		end
 	end
 	return biR
+end
+
+function int_and(bi, mask)
+    return bit32.band(bi.comps[1], mask)
+end
+
+function is_one(bi)
+    return ( bi.sign == 1 and #bi.comps == 1 and bi.comps[1] == 1 )
+end
+
+function is_zero(bi)
+	return ( bi.sign == 1 and #bi.comps == 1 and bi.comps[1] == 0 )
+end
+
+function half(bi)
+    local biR, c
+
+    -- This depends on the radix being even.
+    biR = clone( bi )
+    for c = 1,#biR.comps do
+		if ( biR.comps[c] % 2 == 1 ) then
+		    if ( c > 1 ) then
+				biR.comps[c - 1] = biR.comps[c] + bi_radix_o2
+			end
+		end
+		biR.comps[c] = fl(biR.comps[c] / 2)
+	end
+    return biR
+end
+
+local csqrt = math.sqrt
+
+-- Find integer square root by Newton's method.
+function sqrt(bi)
+    local biR, biR2, bidiff
+
+    local switch = compare( bi, bi_0 )
+	if switch == -1 then
+		error("bi_sqrt: imaginary result\n")
+	elseif switch == 0 then
+		return bi
+	end
+    if ( is_one( bi ) ) then
+		return bi
+	end
+
+    --[[ Newton's method converges reasonably fast, but it helps to have
+    -- a good initial guess.  We can make a *very* good initial guess
+    -- by taking the square root of the top component times the square
+    -- root of the radix part.  Both of those are easy to compute.
+    ]]
+    biR = int_multiply(power( bigint( radix_sqrt ), bigint( #bi.comps ) ),csqrt( bi.comps[#bi.comps] ) )
+
+    -- Now do the Newton loop until we have the answer.
+    while true do
+		biR2 = divide( bi, biR )
+		bidiff = subtract( biR, biR2 )
+		if ( is_zero( bidiff ) or compare( bidiff, bi_m1 ) == 0 ) then
+		    return biR
+		end
+		if is_one( bidiff ) then
+		    return biR2
+		end
+		biR = half( add( biR, biR2 ) )
+	end
 end
