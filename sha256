@@ -39,10 +39,18 @@ end
 
 local function num2s(l, n)
 	local s = ""
-	for i = 1, n do
-		local rem = l % 256
-		s = string.char(rem) .. s
-		l = (l - rem) / 256
+	if n then
+		for i = 1, n do
+			local rem = l % 256
+			s = string.char(rem) .. s
+			l = (l - rem) / 256
+		end
+	else
+		repeat
+			local rem = l % 256
+			s = string.char(rem) .. s
+			l = (l - rem) / 256
+		until l <= 0
 	end
 	return s
 end
@@ -199,4 +207,4 @@ local function rrotate(x, disp)
 end
 
 local _G = _G
-_G.bxor, _G.band, _G.bnot, _G.rshift, _G.lshift, _G.rrotate, _G.sha256 = bxor, band, bnot, rshift, lshift, rrotate, sha256
+_G.bxor, _G.band, _G.bnot, _G.rshift, _G.lshift, _G.rrotate, _G.sha256, _G.num2s = bxor, band, bnot, rshift, lshift, rrotate, sha256, num2s
